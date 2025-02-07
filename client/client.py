@@ -1,5 +1,7 @@
 import asyncio
 
+BUFF = 1024
+
 
 class Disk:
     def __init__(self, size: int, uid: str):
@@ -23,11 +25,13 @@ class VirtualMachineClient:
 
         self.__password = password
         self.is_auth = False
+        self.is_conn = False
 
         self.command_list = {
             "vm_info": self.vm_info,
             "help": self.help,
-            "exit": self.stop
+            "exit": self.stop,
+            "con_server": self.connect_server,
         }
 
     def disk_size(self) -> int:
@@ -57,13 +61,14 @@ class VirtualMachineClient:
         pass
 
     async def commands(self, command: str):
-        match command:
-            case "exit":
-                await self.stop()
-            case "help":
-                self.help()
-            case "vm_info":
-                self.vm_info()
+        if command in self.command_list.keys():
+            func = self.command_list[command]
+            if asyncio.iscoroutinefunction(func):
+                await func()
+            else:
+                func()
+        else:
+            print("Такой команды не существует.")
 
     def help(self):
         commands = " ".join(self.command_list.keys())
@@ -72,3 +77,24 @@ class VirtualMachineClient:
     def vm_info(self):
         info = f"""Виртуальная машина: {self.uid}\nRAM: {self.ram}\nCPU: {self.cpu}\nДиски: {[str(disk) for disk in self.disks]}"""
         print(info)
+
+    async def connect_server(self):
+        try:
+            print("Соединение с сервером установлено.")
+            reader, writer = await asyncio.open_connection(self.host, self.port)
+            self.is_conn = True
+            print("Введите команду сервера(для выхода напишите disconnect).")
+
+            writer.write("help".encode("utf-8"))
+            await writer.drain()
+
+            data = await reader.read(BUFF)
+            print(data.decode())
+
+            while self.is_conn:
+                message = input()
+                if message == "disconnect":
+                    break
+
+        except Exception as e:
+            print(f"Ошибка подключения к серверу: {str(e)}")
