@@ -1,5 +1,7 @@
 import asyncio
 
+from server_terminal import TerminalServer
+
 MAX_READ = 1024
 
 
@@ -8,6 +10,7 @@ class Server:
         self.host = host
         self.port = port
         self.server = None
+        self.terminal_server = TerminalServer(server=self)
         self.__is_working = False
 
     @property
@@ -41,6 +44,10 @@ class Server:
         addr = writer.get_extra_info('peername')
         print(f"Клиент {addr} подключился.")
 
+        commands = self.terminal_server.get_available_commands()
+        writer.write(f"Доступные команды: {commands}\n".encode())
+        await writer.drain()
+
         while True:
             data = await reader.read(MAX_READ)
             if not data:
@@ -50,8 +57,9 @@ class Server:
             message = data.decode()
             print(f"Получены данные {message} от {addr}")
 
-            print("Отправка ответного сообщения...")
-            writer.write(b"Data received.")
+            result = self.terminal_server.handle_command(message.strip())
+
+            writer.write(result.encode())
             await writer.drain()
 
         print("Закрытие соединения.")
