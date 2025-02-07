@@ -1,61 +1,74 @@
 import asyncio
 
-MAX_READ = 1024
+
+class Disk:
+    def __init__(self, size: int, uid: str):
+        self.uid = uid
+        self.size = size
+
+    def __str__(self):
+        return f"Диск: {self.uid}, размер: {self.size}"
 
 
-class Client:
-    def __init__(self, host='127.0.0.1', port=2001):
+class VirtualMachineClient:
+    def __init__(self, host: str, port: int, uid: str, ram: int, cpu: int, disks: list[Disk], password: str):
         self.host = host
         self.port = port
-        self.reader = None
-        self.writer = None
+        self.running = False
 
-    async def connect(self):
-        try:
-            self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
-            print(f'Подключение к серверу {self.host}:{self.port}')
-        except Exception as e:
-            print(f'Ошибка подключения: {e}')
-            exit(1)
+        self.uid = uid
+        self.ram = ram
+        self.cpu = cpu
+        self.disks = disks
 
-    async def send_message(self, message):
-        if self.writer:
-            self.writer.write(message.encode())
-            await self.writer.drain()
-            print(f'Отправлено: {message}')
+        self.__password = password
+        self.is_auth = False
+
+        self.command_list = {
+            "vm_info": self.vm_info,
+            "help": self.help,
+            "exit": self.stop
+        }
+
+    def disk_size(self) -> int:
+        return sum([disk.size for disk in self.disks])
+
+    def authenticate(self):
+        password = input("Введите пароль: ")
+        if password == self.__password:
+            self.is_auth = True
         else:
-            print('Нет соединения с сервером.')
+            print("Неверный пароль.")
 
-    async def receive_message(self):
-        buffer = ""
-        while True:
-            try:
-                data = await self.reader.read(MAX_READ)
-                if not data:
-                    print('Закрыто соединение.')
-                    break
+    async def start(self):
+        self.running = True
+        while self.running:
+            if self.is_auth:
+                command = input(f"Команда: ")
+                await self.commands(command.lower())
+            else:
+                self.authenticate()
 
-                buffer += data.decode()
-                while "\t\n\t\n" in buffer:
-                    message, buffer = buffer.split("\t\n\t\n", 1)
-                    print(str(message))
-            except Exception as e:
-                print(f'Ошибка при получении данных: {e}')
-                break
+    async def stop(self):
+        self.running = False
+        print("Клиент остановлен")
 
-    async def close(self):
-        if self.writer:
-            self.writer.close()
-            await self.writer.wait_closed()
-            print('Соединение закрыто.')
+    async def send_message(self, command: str):
+        pass
 
-    async def run(self):
-        await self.connect()
-        while True:
-            response = await self.reader.read(MAX_READ)
-            if not response:
-                break
-            print(response.decode())
-            message = input("Команда: ")
-            self.writer.write(message.encode())
-            await self.writer.drain()
+    async def commands(self, command: str):
+        match command:
+            case "exit":
+                await self.stop()
+            case "help":
+                self.help()
+            case "vm_info":
+                self.vm_info()
+
+    def help(self):
+        commands = " ".join(self.command_list.keys())
+        print(f"Команды сервера:\n{commands}")
+
+    def vm_info(self):
+        info = f"""Виртуальная машина: {self.uid}\nRAM: {self.ram}\nCPU: {self.cpu}\nДиски: {[str(disk) for disk in self.disks]}"""
+        print(info)
