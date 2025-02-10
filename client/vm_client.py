@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 BUFF = 1024
 
@@ -29,6 +30,7 @@ class VirtualMachineClient:
 
         self.command_list = {
             "vm_info": self.vm_info,
+            "vm_info_json": self.vm_info_json,
             "help": self.help,
             "exit": self.stop,
             "con_server": self.connect_server,
@@ -49,7 +51,8 @@ class VirtualMachineClient:
         while self.running:
             if self.is_auth:
                 command = input(f"Команда: ")
-                await self.commands(command.lower())
+                result = await self.commands(command.lower())
+                print(result)
             else:
                 self.authenticate()
 
@@ -57,26 +60,42 @@ class VirtualMachineClient:
         self.running = False
         print("Клиент остановлен")
 
-    async def send_message(self, command: str):
-        pass
-
     async def commands(self, command: str):
         if command in self.command_list.keys():
             func = self.command_list[command]
-            if asyncio.iscoroutinefunction(func):
-                await func()
-            else:
-                func()
+            try:
+                if asyncio.iscoroutinefunction(func):
+                    result = await func()
+                else:
+                    result = func()
+                return {"command": command, "result": result}
+            except Exception as e:
+                return {"error": str(e)}
         else:
-            print("Такой команды не существует.")
+            return {"error": "Такой команды не существует."}
 
     def help(self):
         commands = " ".join(self.command_list.keys())
-        print(f"Команды сервера:\n{commands}")
+        return f"Команды сервера:\n{commands}"
 
     def vm_info(self):
-        info = f"""Виртуальная машина: {self.uid}\nRAM: {self.ram}\nCPU: {self.cpu}\nДиски: {[str(disk) for disk in self.disks]}"""
-        print(info)
+        return f"""
+        Виртуальная машина: {self.uid}
+        RAM: {self.ram}
+        CPU: {self.cpu}
+        Размер дисков: {self.disk_size()}
+        Диски: {[str(disk) for disk in self.disks]}"""
+
+    def vm_info_json(self):
+        return {
+            "uid": self.uid,
+            "ram": self.ram,
+            "cpu": self.cpu,
+            "disks": [{
+                "uid": disk.uid,
+                "size": disk.size
+            } for disk in self.disks]
+        }
 
     async def connect_server(self):
         try:
@@ -85,16 +104,19 @@ class VirtualMachineClient:
             self.is_conn = True
             print("Введите команду сервера(для выхода напишите disconnect).")
 
-            writer.write("help".encode("utf-8"))
-            await writer.drain()
+            data = (await reader.read(BUFF)).decode()
 
-            data = await reader.read(BUFF)
-            print(data.decode())
+            result = await self.commands(str(data))
+            writer.write(json.dumps(result))
+
+            await writer.drain()
 
             while self.is_conn:
                 message = input()
                 if message == "disconnect":
+                    print("Отключение от сервера.")
                     break
+
 
         except Exception as e:
             print(f"Ошибка подключения к серверу: {str(e)}")
