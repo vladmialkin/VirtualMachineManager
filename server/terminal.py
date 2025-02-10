@@ -15,15 +15,15 @@ class Terminal:
         self.server = server
         self.commands = {
             'get_commands': self.get_commands,
+            'start_vm': self.start_vm,
             'create_vm': self.create_vm,
             'update_vm': self.update_vm,
             'get_vm': self.get_vm,
             'get_all_vms': self.get_all_vms,
-            'get_authenticated_vms': self.get_authenticated_vms,
-            'get_connected_vms': self.get_connected_vms,
+            'get_auth_vms': self.get_auth_vms,
+            'get_active_vms': self.get_active_vms,
             'get_disk': self.get_disk,
             'connect_vm': self.connect_vm,
-            'disconnect_vm': self.disconnect_vm,
         }
 
     def get_commands(self, **params):
@@ -63,7 +63,6 @@ class Terminal:
                 password_hash = hashlib.sha256(data[3].encode()).hexdigest()
 
                 result = await self.repository.create_vm(ram=ram, cpu=cpu, name=name, password=password_hash)
-                print(result)
                 if result:
                     client = VirtualMachineClient(
                         uid=result[0],
@@ -73,7 +72,7 @@ class Terminal:
                         password=result[3]
                     )
                     await client.connect_server()
-                    self.server.active_vms.update({client.uid: client})
+                    self.server.active_vms.update({client.name: client})
                     return "Виртуальная машина создана и запущена."
 
             else:
@@ -86,33 +85,106 @@ class Terminal:
         pass
 
     def get_all_vms(self, **params):
-        return "\n".join(str(vm) for vm in self.server.all_vms)
+        if self.server.all_vms:
+            return "Все ВМ: " + ", ".join(str(vm) for vm in self.server.all_vms)
+        return "Нет доступных ВМ."
 
-    def get_authenticated_vms(self, **params):
-        pass
+    def get_auth_vms(self, **params):
+        if self.server.authenticated_vms:
+            return "Авторизованные ВМ: " + ", ".join(str(vm) for vm in self.server.authenticated_vms)
+        return "Нет авторизованных ВМ."
 
-    def get_connected_vms(self, **params):
-        pass
+    def get_active_vms(self, **params):
+        if self.server.active_vms:
+            return "Активные ВМ: " + ", ".join(str(vm) for vm in self.server.active_vms)
+        return "Нет активных ВМ."
 
     def get_disk(self, **params):
         pass
 
-    def connect_vm(self, **params):
-        pass
+    async def start_vm(self, writer, reader):
+        while True:
+            writer.write(
+                "Введите имя ВМ.(break для отмены)".encode())
+            await writer.drain()
 
-    def disconnect_vm(self, **params):
-        pass
+            message = (await reader.read(BUFF)).decode()
+            if not message:
+                logging.info(f"Клиент {writer.get_extra_info('peername')} отключился.")
+                return "Не удалось получить данные от клиента."
 
-    async def __create_vms(self, **params):
+            elif message == "break":
+                return "Отмена команды."
+
+            if message in self.server.all_vms:
+                client = self.server.all_vms.pop(message)
+                asyncio.create_task(client.connect_server())
+                self.server.active_vms.update({client.name: (client, writer, reader)})
+                return "Виртуальная машина запущена."
+
+            else:
+                logging.info(f"Неверные параметры. Повторите ввод параметров.")
+
+    async def connect_vm(self, writer, reader):
+        # await self.start_vm(writer, reader)
+
+        writer.write(
+            "Введите имя ВМ.(break для отмены)".encode())
+        await writer.drain()
+
+        client_name = (await reader.read(BUFF)).decode()
+        if not client_name:
+            logging.info(f"Клиент {writer.get_extra_info('peername')} отключился.")
+            return "Не удалось получить данные от клиента."
+
+        elif client_name == "break":
+            return "Отмена команды."
+
+        if client_name in self.server.active_vms:
+            client = self.server.active_vms[client_name][0]
+
+            while True:
+                if not client.is_auth:
+                    writer.write("Введите пароль: ".encode())
+                    await writer.drain()
+
+                    password = (await reader.read(BUFF))
+                    result = await client.authenticate(password)
+                    writer.write(result.encode())
+                    await writer.drain()
+
+                    commands_info = client.help()
+                    writer.write(commands_info.encode())
+                    await writer.drain()
+
+                else:
+
+                    command = (await reader.read(BUFF)).decode()
+                    if not command:
+                        break
+
+                    if command == "break":
+                        return "Выход из ВМ."
+
+                    response = await client.commands(command)
+                    writer.write(response.encode())
+                    await writer.drain()
+
+        else:
+            return "Неверное имя ВМ."
+
+    async def create_vms(self, **params):
         """Функция создает и запускает клиенты ВМ."""
-        vms_list = self.repository.get_all_vms()
-        print(vms_list)
-        # for vm in vms_list:
-        #     obj = VirtualMachine(
-        #         vm_id='1',
-        #         ram=2,
-        #         cpu=3,
-        #         disks=[Disk(uid="1", size=2) for disk in vm['disks']],
-        #         password='4',
-        #     )
-        #     self.all_vms.update({obj.vm_id: obj})
+        vms_list = await self.repository.get_all_vms()
+        for vm in vms_list:
+            client = VirtualMachineClient(
+                uid=vm[0],
+                name=vm[1],
+                ram=vm[2],
+                cpu=vm[3],
+                disks=None,
+                password=vm[4],
+            )
+            # TODO добавить создание дисков
+            self.server.all_vms.update({client.name: client})
+        logging.info(f"ВМ найдены: {len(vms_list)}")

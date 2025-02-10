@@ -31,6 +31,7 @@ class Server:
         addr = self.server.sockets[0].getsockname()
         logging.info(f"Сервер запущен на {addr}")
         await self.repository.connect()
+        await self.terminal.create_vms()
         try:
             async with self.server:
                 await self.server.serve_forever()

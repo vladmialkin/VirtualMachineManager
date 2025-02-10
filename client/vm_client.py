@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import json
+import logging
 
 BUFF = 1024
 
@@ -14,51 +16,58 @@ class Disk:
 
 
 class VirtualMachineClient:
-    def __init__(self, host: str, port: int, uid: str, ram: int, cpu: int, disks: list[Disk], password: str):
+    def __init__(self,
+                 uid: str,
+                 name: str,
+                 ram: int,
+                 cpu: int,
+                 disks: list[Disk] | None,
+                 password: str,
+                 host: str = '127.0.0.1',
+                 port: int = 8888):
         self.host = host
         self.port = port
         self.running = False
 
         self.uid = uid
+        self.name = name
         self.ram = ram
         self.cpu = cpu
         self.disks = disks
 
         self.__password = password
         self.is_auth = False
-        self.is_conn = False
+
+        self.reader = None
+        self.writer = None
 
         self.command_list = {
             "vm_info": self.vm_info,
-            "vm_info_json": self.vm_info_json,
             "help": self.help,
-            "exit": self.stop,
-            "con_server": self.connect_server,
+            "logout": self.logout,
+            "stop_client": self.stop,
         }
 
     def disk_size(self) -> int:
-        return sum([disk.size for disk in self.disks])
-
-    def authenticate(self):
-        password = input("Введите пароль: ")
-        if password == self.__password:
-            self.is_auth = True
+        if self.disks:
+            return sum([disk.size for disk in self.disks])
         else:
-            print("Неверный пароль.")
+            return 0
 
-    async def start(self):
-        self.running = True
-        while self.running:
-            if self.is_auth:
-                command = input(f"Команда: ")
-                result = await self.commands(command.lower())
-                print(result)
-            else:
-                self.authenticate()
+    async def authenticate(self, password):
+        if self.__password == hashlib.sha256(password).hexdigest():
+            self.is_auth = True
+            return "Вы авторизованы в ВМ.\n"
+        else:
+            return "Неверный пароль.\n"
+
+    def logout(self):
+        self.is_auth = False
+        return "Вы вышли из ВМ.\n"
 
     async def stop(self):
         self.running = False
-        print("Клиент остановлен")
+        logging.info("Клиент остановлен.")
 
     async def commands(self, command: str):
         if command in self.command_list.keys():
@@ -68,55 +77,54 @@ class VirtualMachineClient:
                     result = await func()
                 else:
                     result = func()
-                return {"command": command, "result": result}
+                return result
             except Exception as e:
-                return {"error": str(e)}
+                return f"Возникла ошибка: {str(e)}\n"
         else:
-            return {"error": "Такой команды не существует."}
+            return "Такой команды не существует.\n"
 
     def help(self):
-        commands = " ".join(self.command_list.keys())
-        return f"Команды сервера:\n{commands}"
+        commands = ", ".join(self.command_list.keys())
+        return f"Команды ВМ: {commands}\n"
 
     def vm_info(self):
+        if self.disks:
+            disk = [str(disk) for disk in self.disks]
+        else:
+            disk = "Нет дисков"
         return f"""
         Виртуальная машина: {self.uid}
         RAM: {self.ram}
         CPU: {self.cpu}
         Размер дисков: {self.disk_size()}
-        Диски: {[str(disk) for disk in self.disks]}"""
-
-    def vm_info_json(self):
-        return {
-            "uid": self.uid,
-            "ram": self.ram,
-            "cpu": self.cpu,
-            "disks": [{
-                "uid": disk.uid,
-                "size": disk.size
-            } for disk in self.disks]
-        }
+        Диски: {disk}\n"""
 
     async def connect_server(self):
+        # Функция является заглушкой...
         try:
-            print("Соединение с сервером установлено.")
-            reader, writer = await asyncio.open_connection(self.host, self.port)
-            self.is_conn = True
-            print("Введите команду сервера(для выхода напишите disconnect).")
+            logging.info(f'Подключение к серверу {self.host}:{self.port}...')
+            self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
+            logging.info('Подключение установлено!')
 
-            data = (await reader.read(BUFF)).decode()
+            # while True:
+            #
+            #
+            #     command = (await self.reader.read(BUFF)).decode()
+            #     logging.info(f'Получена команда от сервера: {command}')
+            #     if command.lower() == "disconnect":
+            #         logging.info('Завершение работы клиента...')
+            #         break
+            #
+            #     writer.write(command.encode())
+            #     await writer.drain()
+            #     logging.info(f'Команда отправлена: {command}')
+            #
+            #     response = await reader.read(BUFF)
+            #     logging.info(f'Получен ответ от сервера: {response.decode()}')
 
-            result = await self.commands(str(data))
-            writer.write(json.dumps(result))
-
-            await writer.drain()
-
-            while self.is_conn:
-                message = input()
-                if message == "disconnect":
-                    print("Отключение от сервера.")
-                    break
-
+            self.writer.close()
+            await self.writer.wait_closed()
+            logging.info('Соединение закрыто.')
 
         except Exception as e:
-            print(f"Ошибка подключения к серверу: {str(e)}")
+            logging.error(f'Ошибка подключения к серверу: {str(e)}')
