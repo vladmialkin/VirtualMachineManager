@@ -16,13 +16,15 @@ class Server:
 
         self.repository = Repository(db_config)
         self.terminal = Terminal(
-            repository=self.repository
+            repository=self.repository,
+            server=self,
         )
 
         self.server = None
 
-        self.active_vm = {}
-        self.authenticated_vm = {}
+        self.all_vms = {}
+        self.active_vms = {}
+        self.authenticated_vms = {}
 
     async def start(self):
         self.server = await asyncio.start_server(self.handle_client, self.host, self.port)
@@ -54,7 +56,7 @@ class Server:
 
             logging.info(f"Получена команда {message} от {addr}")
 
-            response = self.terminal.processing_commands(message)
+            response = await self.terminal.processing_commands(message, writer=writer, reader=reader)
             writer.write(response.encode())
             await writer.drain()
             logging.info(f"Ответ отправлен клиенту {addr}")

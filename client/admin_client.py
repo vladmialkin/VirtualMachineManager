@@ -10,7 +10,6 @@ class AdminClient:
     def __init__(self, host: str = '127.0.0.1', port: int = 8888):
         self.host = host
         self.port = port
-        self.running = False
 
     async def connect_server(self):
         try:
