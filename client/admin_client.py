@@ -3,12 +3,11 @@ import logging
 
 BUFF = 1024
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class AdminClient:
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str = '127.0.0.1', port: int = 8888):
         self.host = host
         self.port = port
         self.running = False
@@ -42,9 +41,3 @@ class AdminClient:
 
         except Exception as e:
             logging.error(f'Ошибка подключения к серверу: {str(e)}')
-
-
-# Пример использования
-if __name__ == "__main__":
-    client = AdminClient("localhost", 8888)
-    asyncio.run(client.connect_server())

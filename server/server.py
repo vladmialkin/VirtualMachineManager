@@ -1,30 +1,34 @@
 import asyncio
+import logging
 
-from server_terminal import TerminalServer
+from repository import Repository
+from terminal import Terminal
 
-MAX_READ = 1024
+BUFF = 1024
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class Server:
-    def __init__(self, host: str = "127.0.0.1", port: int = 2001):
+    def __init__(self, host: str = "127.0.0.1", port: int = 8888, db_config=None):
         self.host = host
         self.port = port
-        self.server = None
-        self.terminal_server = TerminalServer(server=self)
-        self.__is_working = False
 
-    @property
-    def is_working(self):
-        return self.__is_working
+        self.repository = Repository(db_config)
+        self.terminal = Terminal(
+            repository=self.repository
+        )
+
+        self.server = None
+
+        self.active_vm = {}
+        self.authenticated_vm = {}
 
     async def start(self):
-        """Функция запускает сервер"""
         self.server = await asyncio.start_server(self.handle_client, self.host, self.port)
-        self.is_running = True
-
         addr = self.server.sockets[0].getsockname()
-        print(f"Сервер запущен на {addr}")
-
+        logging.info(f"Сервер запущен на {addr}")
+        await self.repository.connect()
         try:
             async with self.server:
                 await self.server.serve_forever()
@@ -32,35 +36,34 @@ class Server:
             await self.stop()
 
     async def stop(self):
-        """Функция останавливает сервер"""
-        if self.is_running:
-            self.is_running = False
-            self.server.close()
-            await self.server.wait_closed()
-            print("Сервер остановлен.")
+        self.server.close()
+        await self.server.wait_closed()
+        logging.info("Сервер остановлен.")
 
     async def handle_client(self, reader, writer):
-        """Функция ждет подключения клиентов"""
         addr = writer.get_extra_info('peername')
-        print(f"Клиент {addr} подключился.")
+        logging.info(f"Клиент {addr} подключился.")
 
-        commands = self.terminal_server.get_available_commands()
-        writer.write(f"Доступные команды: {commands}\n".encode())
-        await writer.drain()
+        await self.write_commands(writer)
 
         while True:
-            data = await reader.read(MAX_READ)
-            if not data:
-                print(f"Клиент {addr} отключился.")
+            message = (await reader.read(BUFF)).decode()
+            if not message:
+                logging.info(f"Клиент {addr} отключился.")
                 break
 
-            message = data.decode()
-            print(f"Получены данные {message} от {addr}")
+            logging.info(f"Получена команда {message} от {addr}")
 
-            result = self.terminal_server.handle_command(message.strip())
-
-            writer.write(result.encode())
+            response = self.terminal.processing_commands(message)
+            writer.write(response.encode())
             await writer.drain()
+            logging.info(f"Ответ отправлен клиенту {addr}")
 
-        print("Закрытие соединения.")
+        logging.info("Закрытие соединения.")
         writer.close()
+
+    async def write_commands(self, writer):
+        """Функция отправляет доступные команды сервера."""
+        writer.write(self.terminal.get_commands().encode())
+        await writer.drain()
+        logging.info(f"Отправлены доступные команды сервера.")
