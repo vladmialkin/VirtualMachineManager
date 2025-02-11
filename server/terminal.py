@@ -244,13 +244,16 @@ class Terminal:
                 if not command:
                     break
 
+                if command == "logout":
+                    self.server.authenticated_vms.pop(client.name)
+
                 if command == "break":
                     return "Выход из ВМ."
 
                 response = await client.commands(command)
                 writer.write(response.encode())
                 await writer.drain()
-
+            return "Выход из ВМ."
         else:
             return "Неверное имя ВМ."
 

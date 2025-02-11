@@ -60,7 +60,7 @@ class VirtualMachineClient:
         else:
             return "Неверный пароль.\n"
 
-    def logout(self):
+    async def logout(self):
         self.is_auth = False
         return "Вы вышли из ВМ.\n"
 
