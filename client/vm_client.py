@@ -92,7 +92,7 @@ class VirtualMachineClient:
         else:
             disk = "Нет дисков"
         return f"""
-        Виртуальная машина: {self.uid}
+        Виртуальная машина: {self.uid} {self.name}
         RAM: {self.ram}
         CPU: {self.cpu}
         Размер дисков: {self.disk_size()}
@@ -114,6 +114,7 @@ class VirtualMachineClient:
             self.disks.append(disk)
         else:
             self.disks = [disk]
+
     async def connect_server(self):
         # Функция является заглушкой...
         try:

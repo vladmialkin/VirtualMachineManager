@@ -66,12 +66,14 @@ class Terminal:
                 if result:
                     client = VirtualMachineClient(
                         uid=result[0],
-                        ram=result[1],
-                        cpu=result[2],
+                        name=result[1],
+                        ram=result[2],
+                        cpu=result[3],
                         disks=None,
-                        password=result[3]
+                        password=result[4]
                     )
-                    await client.connect_server()
+                    client.connect_server()
+                    self.server.all_vms.update({client.name: client})
                     self.server.active_vms.update({client.name: client})
                     return "Виртуальная машина создана и запущена."
 
@@ -160,20 +162,19 @@ class Terminal:
                     disk = Disk(uid=result[0], size=int(result[1]))
                     client = self.server.all_vms[vm_name]
                     client.add_disk(disk)
-                    writer.write(
-                        f"Диск добавлен в ВМ {client.name}".encode())
-                    await writer.drain()
+                    return f"Диск добавлен в ВМ {client.name}".encode()
 
             else:
                 logging.info(f"Неверные параметры. Повторите ввод параметров.")
 
-
-
     async def get_all_disks(self, **params):
         disks = await self.repository.get_all_disks()
-        return "".join(
-            f"""id: {disk[0]}\nsize: {disk[1]}\nvm_id: {disk[2]}\nvm_name: {disk[3]}\nvm_ram: {disk[4]}\nvm_cpu: {disk[5]}\n\n"""
-            for disk in disks)
+        if disks:
+            return "".join(
+                f"""id: {disk[0]}\nsize: {disk[1]}\nvm_id: {disk[2]}\nvm_name: {disk[3]}\nvm_ram: {disk[4]}\nvm_cpu: {disk[5]}\n\n"""
+                for disk in disks)
+        else:
+            return "Нет дисков."
 
     async def start_vm(self, writer, reader):
         """Функция запускает ВМ."""
@@ -187,7 +188,7 @@ class Terminal:
                 logging.info(f"Клиент {writer.get_extra_info('peername')} отключился.")
                 return "Не удалось получить данные от клиента."
 
-            elif message == "break":
+            if message == "break":
                 return "Отмена команды."
 
             if message in self.server.all_vms:
@@ -195,9 +196,9 @@ class Terminal:
                 asyncio.create_task(client.connect_server())
                 self.server.active_vms.update({client.name: client})
                 return "Виртуальная машина запущена."
-
             else:
                 logging.info(f"Неверные параметры. Повторите ввод параметров.")
+                return "Нет такой ВМ."
 
     async def connect_vm(self, writer, reader):
         """Функция подключается к ВМ."""
@@ -222,6 +223,10 @@ class Terminal:
                     await writer.drain()
 
                     password = (await reader.read(BUFF))
+
+                    if password == "break":
+                        return "Выход из ВМ."
+
                     result = await client.authenticate(password)
                     writer.write(result.encode())
                     await writer.drain()
