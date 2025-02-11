@@ -72,9 +72,7 @@ class Terminal:
                         disks=None,
                         password=result[4]
                     )
-                    # client.connect_server()
                     self.server.all_vms.update({client.name: client})
-                    self.server.active_vms.update({client.name: client})
                     return "Виртуальная машина создана и запущена."
 
             else:
@@ -239,6 +237,8 @@ class Terminal:
                     await writer.drain()
                     break
             while True:
+                if not client.is_auth:
+                    break
                 self.server.authenticated_vms.update({client.name: client})
                 command = (await reader.read(BUFF)).decode()
                 if not command:
