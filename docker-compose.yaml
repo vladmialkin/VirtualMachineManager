@@ -26,6 +26,7 @@ services:
     env_file:
       - ./.env
     restart: always
+    user: root
     healthcheck:
       test: [ "CMD", "wget", "-O", "-", "http://localhost:80/misc/ping" ]
       interval: 30s
