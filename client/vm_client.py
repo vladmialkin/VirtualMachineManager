@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import json
 import logging
 
 BUFF = 1024
@@ -99,6 +98,22 @@ class VirtualMachineClient:
         Размер дисков: {self.disk_size()}
         Диски: {disk}\n"""
 
+    def update(self,
+               name: str | None = None,
+               ram: int | None = None,
+               cpu: int | None = None):
+        if name:
+            self.name = name
+        if ram:
+            self.ram = ram
+        if cpu:
+            self.cpu = cpu
+
+    def add_disk(self, disk: Disk):
+        if self.disks:
+            self.disks.append(disk)
+        else:
+            self.disks = [disk]
     async def connect_server(self):
         # Функция является заглушкой...
         try:
