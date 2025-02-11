@@ -116,7 +116,8 @@ class Terminal:
                     return "ВМ обновлена."
                 else:
                     return "ВМ не удалось обновить."
-
+        else:
+            return "ВМ не активна."
     def get_all_vms(self, **params):
         """Функция выводит список всех ВМ."""
         if self.server.all_vms:
