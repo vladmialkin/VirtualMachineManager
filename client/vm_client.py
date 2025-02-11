@@ -67,6 +67,7 @@ class VirtualMachineClient:
     async def stop(self):
         self.running = False
         logging.info("Клиент остановлен.")
+        return "Клиент остановлен."
 
     async def commands(self, command: str):
         if command in self.command_list.keys():

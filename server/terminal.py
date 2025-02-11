@@ -72,7 +72,7 @@ class Terminal:
                         disks=None,
                         password=result[4]
                     )
-                    client.connect_server()
+                    # client.connect_server()
                     self.server.all_vms.update({client.name: client})
                     self.server.active_vms.update({client.name: client})
                     return "Виртуальная машина создана и запущена."
@@ -162,7 +162,7 @@ class Terminal:
                     disk = Disk(uid=result[0], size=int(result[1]))
                     client = self.server.all_vms[vm_name]
                     client.add_disk(disk)
-                    return f"Диск добавлен в ВМ {client.name}".encode()
+                    return f"Диск добавлен в ВМ {client.name}"
 
             else:
                 logging.info(f"Неверные параметры. Повторите ввод параметров.")
@@ -193,7 +193,6 @@ class Terminal:
 
             if message in self.server.all_vms:
                 client = self.server.all_vms[message]
-                asyncio.create_task(client.connect_server())
                 self.server.active_vms.update({client.name: client})
                 return "Виртуальная машина запущена."
             else:
@@ -238,18 +237,19 @@ class Terminal:
                 else:
                     writer.write("ВМ авторизована.".encode())
                     await writer.drain()
+                    break
+            while True:
+                self.server.authenticated_vms.update({client.name: client})
+                command = (await reader.read(BUFF)).decode()
+                if not command:
+                    break
 
-                    self.server.authenticated_vms.update({client.name: client})
-                    command = (await reader.read(BUFF)).decode()
-                    if not command:
-                        break
+                if command == "break":
+                    return "Выход из ВМ."
 
-                    if command == "break":
-                        return "Выход из ВМ."
-
-                    response = await client.commands(command)
-                    writer.write(response.encode())
-                    await writer.drain()
+                response = await client.commands(command)
+                writer.write(response.encode())
+                await writer.drain()
 
         else:
             return "Неверное имя ВМ."
